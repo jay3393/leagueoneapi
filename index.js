@@ -10,6 +10,8 @@ app.use(express.json());
 // Routes
 // app.use('/api/champion/build', buildRoutes);
 
+require('./controllers/fetchController.js');
+
 mongoose.connect('mongodb://localhost:27017/testbuilds', {
     useNewUrlParser: true,
     useUnifiedTopology: true

@@ -66,7 +66,8 @@ function deconstructTimelineData(data) {
         "ITEM_PURCHASED",
         "ITEM_DESTROYED", // consumed
         "ITEM_UNDO", // undo
-        "ITEM_SOLD",] // sold
+        "ITEM_SOLD" // sold
+    ];
 
     for (let i = 0; i < frames.length; i++) {
         const { events } = frames[i];
@@ -116,9 +117,10 @@ function deconstructTimelineData(data) {
 
 
 
-function packData(matchData, timelineData, rank='PLATINUM', division='IV') {
+module.exports.packData = function(matchData, timelineData, rank='PLATINUM', division='IV') {
     const matchObj = deconstructMatchData(matchData);
     const timelineObj = deconstructTimelineData(timelineData);
+
 
     for (let i = 0; i < 10; i++) {
         const participantData = timelineObj[i];
@@ -132,6 +134,3 @@ function packData(matchData, timelineData, rank='PLATINUM', division='IV') {
 
     return matchObj;
 }
-
-
-
