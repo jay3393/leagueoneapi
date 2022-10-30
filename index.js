@@ -12,7 +12,7 @@ app.use(express.json());
 
 require('./controllers/fetchController.js');
 
-mongoose.connect('mongodb://localhost:27017/testbuilds', {
+mongoose.connect(process.env.MONGO_DB_URI, {
     useNewUrlParser: true,
     useUnifiedTopology: true
 })

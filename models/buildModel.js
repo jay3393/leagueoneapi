@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const buildSchema = new mongoose.Schema(
     {
-        championId: Number,
+        _id: Number,
         championName: String,
         matches: Number,
         wins: Number,
@@ -14,96 +14,84 @@ const buildSchema = new mongoose.Schema(
                 stats: [{
                     matches: Number,
                     wins: Number,
-                    winRate: Number,
-                    picks: Array
+                    picks: String
                 }],
-                styles: {
-                    primary: [{
-                        primaryStyle: Number,
+                primary: [{
+                    primaryStyle: Number,
+                    matches: Number,
+                    wins: Number,
+                    selections: [{
                         matches: Number,
                         wins: Number,
-                        winRate: Number,
-                        selections: [{
-                            matches: Number,
-                            wins: Number,
-                            winRate: Number,
-                            picks: Array
-                        }]
-                    }],
-                    secondary: [{
-                        secondaryStyle: Number,
-                        matches: Number,
-                        wins: Number,
-                        winRate: Number,
-                        selections: [{
-                            matches: Number,
-                            wins: Number,
-                            winRate: Number,
-                            picks: Array
-                        }]
+                        picks: String
                     }]
-                }
+                }],
+                secondary: [{
+                    secondaryStyle: Number,
+                    matches: Number,
+                    wins: Number,
+                    selections: [{
+                        matches: Number,
+                        wins: Number,
+                        picks: String
+                    }]
+                }]
             },
             summonerSpells: [{
                 matches: Number,
                 wins: Number,
-                winRate: Number,
                 spells: Array
             }],
             skillPath: [{
+                position: Number,
+                skills: [{
+                    matches: Number,
+                    wins: Number,
+                    skill: Number
+                }]
+            }],
+            mythic: [{
+                itemId: Number,
                 matches: Number,
                 wins: Number,
-                winRate: Number,
-                path: Array
             }],
-            fullItems: {
-                core: {
-                    mythic: [{
-                        itemId: Number,
-                        matches: Number,
-                        wins: Number,
-                        winRate: Number
-                    }],
-                    boot: [{
-                        itemId: Number,
-                        matches: Number,
-                        wins: Number,
-                        winRate: Number
-                    }],
-                    second: [{
-                        itemId: Number,
-                        matches: Number,
-                        wins: Number,
-                        winRate: Number
-                    }]
-                },
-                fourth: [{
-                    itemId: Number,
-                    matches: Number,
-                    wins: Number,
-                    winRate: Number
-                }],
-                fifth: [{
-                    itemId: Number,
-                    matches: Number,
-                    wins: Number,
-                    winRate: Number
-                }],
-                sixth: [{
-                    itemId: Number,
-                    matches: Number,
-                    wins: Number,
-                    winRate: Number
-                }]
-            },
+            boots: [{
+                itemId: Number,
+                matches: Number,
+                wins: Number,
+            }],
+            second: [{
+                itemId: Number,
+                matches: Number,
+                wins: Number,
+            }],
+            third: [{
+                itemId: Number,
+                matches: Number,
+                wins: Number,
+            }],
+            fourth: [{
+                itemId: Number,
+                matches: Number,
+                wins: Number,
+            }],
+            fifth: [{
+                itemId: Number,
+                matches: Number,
+                wins: Number,
+            }],
+            sixth: [{
+                itemId: Number,
+                matches: Number,
+                wins: Number,
+            }],
             starterItems: [{
                 matches: Number,
                 wins: Number,
-                winRate: Number,
-                items: Array
+                items: String
             }]
         }]
     }
 );
 
-module.exports = mongoose.model('Build', buildSchema);
+module.exports = mongoose.model('champions', buildSchema);

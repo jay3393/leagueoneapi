@@ -1,11 +1,9 @@
 const axios = require('axios');
 const { packData } = require('./buildController.js');
 const { aggregate } = require('./aggregateController.js');
+const MatchModel = require('../models/matchModel');
+const { sleep } = require('../util/sleep');
 require('dotenv').config();
-
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 // Constantly fetch until all puuids are gotten
 async function fetch(rank='PLATINUM', division='IV') {
@@ -43,7 +41,9 @@ async function fetch(rank='PLATINUM', division='IV') {
 
     const ids = await fetchLeagueExp();
     const puuids = new Array();
-    await fetchPuuids(ids.splice(0, 2), puuids);
+    // await fetchPuuids(ids.splice(0, 2), puuids);
+    await fetchPuuids(ids, puuids);
+
    
     return puuids;
 }
@@ -53,25 +53,28 @@ async function fetchMatches(puuid) {
         const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&api_key=${process.env.RIOT_API_KEY}`);
         return data;
     } catch (ex) {
+        // make this recursive
+        console.log('failed to fetch matches');
         return undefined;
     }
 }
 
-async function fetchMatchData(matchId) {
+async function fetchMatchData(matchId, apikey) {
     try {
-        const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${process.env.RIOT_API_KEY}`);
+        const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${apikey}`);
         return data;
-    } catch {
+    } catch (ex){
+        console.log(matchId, ex.response.status, ex.response.statusText);
         return undefined;
     }
 }
 
-async function fetchMatchTimeline(matchId) {
+async function fetchMatchTimeline(matchId, apikey) {
     try {
-        const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline?api_key=${process.env.RIOT_API_KEY}`);
+        const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline?api_key=${apikey}`);
         return data;
-    } catch {
-        return undefined;
+    } catch (ex) {
+        return fetchMatchTimeline(matchId);
     }
 }
 
@@ -79,28 +82,62 @@ const store = {};
 
 async function run() {
     const puuids = await fetch();
-    for (let puuid of puuids) {
-        const matchIds = await fetchMatches(puuid);
+    let apikeys = [
+        process.env.RIOT_API_KEY,
+        process.env.RIOT_API_KEY_2
+    ];
 
+    for (let puuid of puuids) {
+        let matchIds = await fetchMatches(puuid);
+        if (!matchIds) continue;
+        matchIds = matchIds.filter(async(x) => {
+            return await MatchModel.findById(x) !== undefined;
+        });
         if (matchIds !== undefined) {
             for (let matchId of matchIds) {
+                if (await MatchModel.findById(matchId)) continue;
+                await sleep(1200);
+                let oldtime;
+                const totaltime = Date.now();
+
+                const doSomething = (mdata, tdata) => {
+                    console.log(`[Received] ${matchId}`);
+                    const matchData = mdata.value;
+                    const matchTimeline = tdata.value;
+                    if (matchData !== undefined && matchTimeline !== undefined) {
+                        oldtime = Date.now();
+                        const data = packData(matchData, matchTimeline);
+                        // console.log(`Pack data: ${Date.now() - oldtime}ms`);
+                        oldtime = Date.now();
+                        try {
+                            MatchModel.create({
+                                _id: matchId
+                            })
+                            .then(() => aggregate(data, store));
+                        } catch (ex) {
+                            console.log(`[ERR] Duplicate key`);
+                        }
+                    
+                        // console.log(`Aggregate: ${(Date.now() - oldtime)}ms`);
+                    }
+                    console.log(`[Completed] ${matchId}`);
+                }
 
                 try {
-                    const matchData = await fetchMatchData(matchId);
-                    const matchTimeline = await fetchMatchTimeline(matchId);
-                    if (matchData !== undefined && matchTimeline !== undefined) {
-                        const data = packData(matchData, matchTimeline);
-                        console.log('Successfully got required data');
-                        // console.log(data);
-                        aggregate(data, store);
-                    }
+                    oldtime = Date.now();
+                    const matchData = fetchMatchData(matchId, apikeys[0]);
+                    const matchTimeline = fetchMatchTimeline(matchId, apikeys[1]);
+
+                    Promise.allSettled([matchData, matchTimeline])
+                    .then((results) => doSomething(results[0], results[1]));
+                    console.log(`[Sent] ${matchId}`);
                 } catch (ex){
                     console.log(ex);
                 }
             }
         }
     }    
-    console.log(store);
+    // console.log(store);
 }
 
 run();
