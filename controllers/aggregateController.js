@@ -1,10 +1,64 @@
 const BuildModel = require('../models/buildModel.js');
 const { arrEquals } = require('../util/arrayEquals');
+const { timeElapsed } = require('../util/timeElapsed');
 
-module.exports.aggregate = async function (dataPack, store) {
+// Debugging
+const DEBUG = true;
+let debugMatchHigh=0;
+let debugMatchTotal=0;
+let debugMatchCount=0;
+
+let debugSkillHigh=0;
+let debugSkillTotal=0;
+let debugSkillCount=0;
+
+let debugStartingHigh=0;
+let debugStartingTotal=0;
+let debugStartingCount=0;
+
+let debugItemsHigh=0;
+let debugItemsTotal=0;
+let debugItemsCount=0;
+
+let debugRunesHigh=0;
+let debugRunesTotal=0;
+let debugRunesCount=0;
+
+let debugSpellHigh=0;
+let debugSpellTotal=0;
+let debugSpellCount=0;
+
+let debugFindIdHigh=0;
+let debugFindIdTotal=0;
+let debugFindIdCount=0; 
+
+let debugFindIdsHigh=0;
+let debugFindIdsTotal=0;
+let debugFindIdsCount=0; 
+
+module.exports.aggregate = async function (dataPack) {
+    // Handles undefined dataPack
+    if (!dataPack) {
+        console.log('undefined datapack', dataPack);
+        return;
+    };
     const { matchId, queueId, data, rank, division } = dataPack;
+    let oldtime;
+    let diff;
+    let totalDiff=0;
+    oldtime = new Date();
+    const championIds = data.map(x=>x.championId);
+    const findIds = await BuildModel.find({ _id: { $in: championIds}});
+    // const idsExists = findIds.reduce((a, v) => ({ ...a, [v._id]: v}));
+    // console.log(idsExists);
+    diff = new Date() - oldtime;
+    totalDiff+=diff;
+    debugFindIdsHigh = Math.max(debugFindIdsHigh, diff);
+    debugFindIdsCount++;
+    debugFindIdsTotal+=diff;
 
     for (let d of data) {
+
         const { 
             championId, 
             championName, 
@@ -36,11 +90,18 @@ module.exports.aggregate = async function (dataPack, store) {
 
         // Aggregation
         try {
-            const idExists = await BuildModel.findById(championId);
-
-
+            oldtime = new Date();
+            // const idExists = await BuildModel.findById(championId);
+            const idExists = findIds.find(x => x._id === championId);
+            diff = new Date() - oldtime;
+            totalDiff+=diff;
+            debugFindIdHigh = Math.max(debugFindIdHigh, diff);
+            debugFindIdCount++;
+            debugFindIdTotal+=diff;
             // Initialize champion data structure
             if (!idExists) {
+                console.log('Creating champion');
+                if (championId.toString().length >= 6) continue;
                 await BuildModel.create({
                     _id: championId,
                     championName,
@@ -136,61 +197,98 @@ module.exports.aggregate = async function (dataPack, store) {
                 });
             } 
             
-
             // Update all properties if the role exists within the document
             else if (idExists.roles.find(x => x.role === lane)) {
                 // Update match and wins
+                oldtime = new Date();
                 await BuildModel.updateOne({_id: championId, "roles.role": lane },
                     {
                         $inc: { matches: 1, wins: addWin, "roles.$.matches": 1, "roles.$.wins": addWin }
                     }    
                 );
+                diff = new Date() - oldtime;
+                totalDiff+=diff;
+                debugMatchHigh = Math.max(debugMatchHigh, diff);
+                debugMatchCount++;
+                debugMatchTotal+=diff;
 
                 const laneExists = idExists.roles.find(x => x.role === lane);
-
+                
+                oldtime = new Date();
                 // Update skill path
+                const oldSkillPath = laneExists.skillPath;
                 for (let i = 0; i < skillArray.length; i++) {
-
-                    const skillPosition = laneExists.skillPath.find(x => x.position === i + 1);
+                    const skillPosition = oldSkillPath.find(x => x.position === i + 1);
                     const skillExists = skillPosition.skills.find(x => x.skill == skillArray[i]);
                     if (skillExists) {
-                        try {
-                            await BuildModel.updateOne({_id: championId, "roles.role": lane }, {
-                                $inc: { "roles.$.skillPath.$[i].skills.$[j].matches": 1, "roles.$.skillPath.$[i].skills.$[j].wins": addWin }
-                            },
-                            {
-                                arrayFilters: [
-                                    {"i.position": i + 1},
-                                    {"j.skill": skillArray[i]}
-                                ]
-                            });
-                        } catch (ex) {
-                            console.log(`[ERR] Failed to update skill path: ${ex}`);
-                        }
+                        skillExists.matches++;
+                        skillExists.wins += addWin;
                     } 
                     
                     // Push new skill path
                     else {
-                        try {
-                            await BuildModel.updateOne({_id: championId, "roles.role": lane }, {
-                                $push: { "roles.$.skillPath.$[i].skills": {
-                                    matches: 1,
-                                    wins: addWin,
-                                    skill: skillArray[i]
-                                }}
-                            }, {
-                                arrayFilters: [
-                                    {"i.position": i + 1}
-                                ]
-                            });
-                        } catch (ex) {
-                            console.log(`[ERR] Failed to push new skill path: ${ex}`);
-                        }
+                        skillPosition.skills.push(
+                            {
+                                matches: 1,
+                                wins: addWin,
+                                skill: skillArray[i]
+                            }
+                        )
                     }
+                   
                 }
-                
+                await BuildModel.updateOne({ _id: championId, "roles.role": lane },
+                    {
+                        $set: { "roles.$.skillPath": oldSkillPath }
+                    }
+                );
+                // console.log(championId, lane);
+                // for (let i = 0; i < skillArray.length; i++) {
+                //     const skillPosition = laneExists.skillPath.find(x => x.position === i + 1);
+                //     const skillExists = skillPosition.skills.find(x => x.skill == skillArray[i]);
+                //     if (skillExists) {
+                //         try {
+                //             await BuildModel.updateOne({_id: championId, "roles.role": lane }, {
+                //                 $inc: { "roles.$.skillPath.$[i].skills.$[j].matches": 1, "roles.$.skillPath.$[i].skills.$[j].wins": addWin }
+                //             },
+                //             {
+                //                 arrayFilters: [
+                //                     {"i.position": i + 1},
+                //                     {"j.skill": skillArray[i]}
+                //                 ]
+                //             });
+                //         } catch (ex) {
+                //             console.log(`[ERR] Failed to update skill path: ${ex}`);
+                //         }
+                //     } 
+                    
+                //     // Push new skill path
+                //     else {
+                //         try {
+                //             await BuildModel.updateOne({_id: championId, "roles.role": lane }, {
+                //                 $push: { "roles.$.skillPath.$[i].skills": {
+                //                     matches: 1,
+                //                     wins: addWin,
+                //                     skill: skillArray[i]
+                //                 }}
+                //             }, {
+                //                 arrayFilters: [
+                //                     {"i.position": i + 1}
+                //                 ]
+                //             });
+                //         } catch (ex) {
+                //             console.log(`[ERR] Failed to push new skill path: ${ex}`);
+                //         }
+                //     }
+                // }
+                diff = new Date() - oldtime;
+                totalDiff+=diff;
+                debugSkillHigh = Math.max(debugSkillHigh, diff);
+                debugSkillCount++;
+                debugSkillTotal+=diff;
+                          
 
-                
+                oldtime = new Date();
                 // Update starting items
                 const starterItemExists = laneExists.starterItems.find(x => x.items === startItems);
                 if (starterItemExists) {
@@ -204,13 +302,12 @@ module.exports.aggregate = async function (dataPack, store) {
                             arrayFilters: [
                                 { "i.items": startItems }
                             ]
-                        })
+                        });
+
                     } catch (ex) {
                         console.log(`[ERR] Failed to update starting items: ${ex}`);
                     }
                 } 
-                
-                
                 // Push new starting items
                 else {
                     try {
@@ -227,6 +324,11 @@ module.exports.aggregate = async function (dataPack, store) {
                         console.log(`[ERR] Failed to push new starting items: ${ex}`);
                     }
                 }
+                diff = new Date() - oldtime;
+                totalDiff+=diff;
+                debugStartingHigh = Math.max(debugStartingHigh, diff);
+                debugStartingCount++;
+                debugStartingTotal+=diff;
 
                 // Update all items
                 const itemKeys = {
@@ -239,46 +341,89 @@ module.exports.aggregate = async function (dataPack, store) {
                     sixth: item6 ? item6 : null,
                 };
 
+                oldtime = new Date();
+                const oldItems = laneExists;
                 for (let item of Object.keys(itemKeys)) {
-                    const itemExists = laneExists[item].find(x => x.itemId == itemKeys[item]);
+                    const itemExists = oldItems[item].find(x => x.itemId == itemKeys[item]);
                     
                     // Update matches and wins for item
                     if (itemExists) {
-                        try {
-                            await BuildModel.updateOne({ _id: championId }, {
-                                $inc: { [`roles.$[i].${item}.$[j].matches`]: 1, [`roles.$[i].${item}.$[j].wins`]: addWin }
-                            },
-                            {
-                                arrayFilters: [
-                                    {"i.role": lane},
-                                    {"j.itemId": itemKeys[item]}
-                                ]
-                            });
-                        } catch (ex) {
-                            console.log(`[ERR] Failed to update item: ${ex}`);
-                        }
+                        itemExists.matches++;
+                        itemExists.wins += addWin;
                     } 
                     
                     
                     // Push new item
                     else {
-                        try {
-                            await BuildModel.updateOne({ _id: championId, "roles.role": lane }, {
-                                $push: { [`roles.$.${item}`]:
-                                    {
-                                        itemId: itemKeys[item],
-                                        matches: 1,
-                                        wins: addWin,
-                                    }
-                                }
-                            });    
-                        } catch (ex) {
-                            console.log(`[ERR] Failed to push new item: ${ex}`);
-                        }
+                        oldItems[item].push(
+                            {
+                                itemId: itemKeys[item],
+                                matches: 1,
+                                wins: addWin
+                            }
+                        )
                     }
                 }
+                await BuildModel.updateOne({ _id: championId, "roles.role": lane }, 
+                    {
+                        $set: { 
+                            "roles.$.mythic": oldItems.mythic,
+                            "roles.$.boots": oldItems.boots,
+                            "roles.$.second": oldItems.second,
+                            "roles.$.third": oldItems.third,
+                            "roles.$.fourth": oldItems.fourth,
+                            "roles.$.fifth": oldItems.fifth,
+                            "roles.$.sixth": oldItems.sixth,
+                         }
+                    }
+                )
+                // for (let item of Object.keys(itemKeys)) {
+                //     const itemExists = laneExists[item].find(x => x.itemId == itemKeys[item]);
+                    
+                //     // Update matches and wins for item
+                //     if (itemExists) {
+                //         try {
+                //             await BuildModel.updateOne({ _id: championId }, {
+                //                 $inc: { [`roles.$[i].${item}.$[j].matches`]: 1, [`roles.$[i].${item}.$[j].wins`]: addWin }
+                //             },
+                //             {
+                //                 arrayFilters: [
+                //                     {"i.role": lane},
+                //                     {"j.itemId": itemKeys[item]}
+                //                 ]
+                //             });
+                //         } catch (ex) {
+                //             console.log(`[ERR] Failed to update item: ${ex}`);
+                //         }
+                //     } 
+                    
+                    
+                //     // Push new item
+                //     else {
+                //         try {
+                //             await BuildModel.updateOne({ _id: championId, "roles.role": lane }, {
+                //                 $push: { [`roles.$.${item}`]:
+                //                     {
+                //                         itemId: itemKeys[item],
+                //                         matches: 1,
+                //                         wins: addWin,
+                //                     }
+                //                 }
+                //             });    
+                //         } catch (ex) {
+                //             console.log(`[ERR] Failed to push new item: ${ex}`);
+                //         }
+                //     }
+                // }
+                // console.log(championId, lane);
+                diff = new Date() - oldtime;
+                totalDiff+=diff;
+                debugItemsHigh = Math.max(debugItemsHigh, diff);
+                debugItemsCount++;
+                debugItemsTotal+=diff;
 
 
+                oldtime = new Date();
                 // Update runes
                 try {
                     // Update matches and wins for rune stats
@@ -445,7 +590,13 @@ module.exports.aggregate = async function (dataPack, store) {
                 } catch (ex){
                     console.log(`[ERR] Failed to update runes: ${ex}`);
                 }
+                diff = new Date() - oldtime;
+                totalDiff+=diff;
+                debugRunesHigh = Math.max(debugRunesHigh, diff);
+                debugRunesCount++;
+                debugRunesTotal+=diff;
 
+                oldtime = new Date();
                 // Update summoner spells
                 try {
                     // Update matches and wins for summoner spells
@@ -479,8 +630,11 @@ module.exports.aggregate = async function (dataPack, store) {
                 } catch (ex) {
                     console.log(`[ERR] Failed to update summoner spells: ${ex}`);
                 }
-                
-                // console.log();
+                diff = new Date() - oldtime;
+                totalDiff+=diff;
+                debugSpellHigh = Math.max(debugSpellHigh, diff);
+                debugSpellCount++;
+                debugSpellTotal+=diff;
             } 
             
             
@@ -583,7 +737,54 @@ module.exports.aggregate = async function (dataPack, store) {
                 );
             }
         } catch (ex) {
-            console.log(`[ERR] Error while aggregating: ${ex}`);
+            console.log(`[ERR] Error while aggregating: ${matchId} ${ex}`);
         }   
     }
+    console.log(`
+            Total: ${totalDiff/1000}
+            `);
+    if (DEBUG) {
+        console.log(`
+        Match
+        Match highest: ${debugMatchHigh/1000}
+        Match avg: ${(debugMatchTotal / debugMatchCount)/1000}
+        `);
+        console.log(`
+        Skill
+        Match highest: ${debugSkillHigh/1000}
+        Match avg: ${(debugSkillTotal / debugSkillCount)/1000}
+        `);
+        console.log(`
+        Starting
+        Match highest: ${debugStartingHigh/1000}
+        Match avg: ${(debugStartingTotal / debugStartingCount)/1000}
+        `);
+        console.log(`
+        Items
+        Match highest: ${debugItemsHigh/1000}
+        Match avg: ${(debugItemsTotal / debugItemsCount)/1000}
+        `);
+        console.log(`
+        Runes
+        Match highest: ${debugRunesHigh/1000}
+        Match avg: ${(debugRunesTotal / debugRunesCount)/1000}
+        `);
+        console.log(`
+        Spell
+        Match highest: ${debugSpellHigh/1000}
+        Match avg: ${(debugSpellTotal / debugSpellCount)/1000}
+        `);
+        console.log(`
+        Find Id
+        Match highest: ${debugFindIdHigh/1000}
+        Match avg: ${(debugFindIdTotal / debugFindIdCount)/1000}
+        `);
+        console.log(`
+        Find Ids
+        Match highest: ${debugFindIdsHigh/1000}
+        Match avg: ${(debugFindIdsTotal / debugFindIdsCount)/1000}
+        `);
+    }
+    
+    return;
 }

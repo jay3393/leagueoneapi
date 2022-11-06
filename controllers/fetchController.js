@@ -1,9 +1,13 @@
 const axios = require('axios');
-const { packData } = require('./buildController.js');
+const { packData } = require('./packController.js');
 const { aggregate } = require('./aggregateController.js');
 const MatchModel = require('../models/matchModel');
 const { sleep } = require('../util/sleep');
+
 require('dotenv').config();
+const CONFIG = require('../config.json');
+const APIKEY1 = process.env.RIOT_API_KEY;
+const APIKEY2 = process.env.RIOT_API_KEY_2;
 
 // Constantly fetch until all puuids are gotten
 async function fetch(rank='PLATINUM', division='IV') {
@@ -23,7 +27,7 @@ async function fetch(rank='PLATINUM', division='IV') {
     }
    
     async function fetchPuuids(ids, puuids, delay=0, index=0) {
-        if (index === ids.length - 1) {
+        if (index === ids?.length - 1) {
             return puuids;
         }
         try {
@@ -41,103 +45,132 @@ async function fetch(rank='PLATINUM', division='IV') {
 
     const ids = await fetchLeagueExp();
     const puuids = new Array();
-    // await fetchPuuids(ids.splice(0, 2), puuids);
-    await fetchPuuids(ids, puuids);
+    await fetchPuuids(ids.splice(0, 10), puuids);
+    // await fetchPuuids(ids, puuids);
 
    
     return puuids;
 }
 
+/**
+ * Gets recent matches for player
+ * @param {string} puuid 
+ * @returns {[String]} List of match ids for player
+ */
 async function fetchMatches(puuid) {
     try {
         const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?type=ranked&start=0&api_key=${process.env.RIOT_API_KEY}`);
         return data;
     } catch (ex) {
-        // make this recursive
-        console.log('failed to fetch matches');
-        return undefined;
+        console.log(`Failed to get player's recent matches: ${ex.response.statusText}\nTrying again in ${CONFIG.TIMEOUT}`);
+        await sleep(CONFIG.TIMEOUT);
+        await fetchMatches(puuid);
     }
 }
 
+/**
+ * Gets the match data for a match
+ * @param {String} matchId 
+ * @param {String} apikey 
+ * @returns {Object} Object of match data
+ */
 async function fetchMatchData(matchId, apikey) {
     try {
         const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/${matchId}?api_key=${apikey}`);
         return data;
     } catch (ex){
-        console.log(matchId, ex.response.status, ex.response.statusText);
-        return undefined;
+        console.log(`Failed to get match data: ${ex.response.statusText}\nTrying again in ${CONFIG.TIMEOUT}`);
+        await sleep(CONFIG.TIMEOUT);
+        await fetchMatchData(matchId, apikey);
     }
 }
 
+/**
+ * Gets the match timeline for a match
+ * @param {String} matchId 
+ * @param {String} apikey 
+ * @returns {Object} Object of match timeline
+ */
 async function fetchMatchTimeline(matchId, apikey) {
     try {
         const { data } = await axios.get(`https://americas.api.riotgames.com/lol/match/v5/matches/${matchId}/timeline?api_key=${apikey}`);
         return data;
     } catch (ex) {
-        return fetchMatchTimeline(matchId);
+        console.log(`Failed to get match timeline: ${ex.response.statusText}\nTrying again in ${CONFIG.TIMEOUT}`);
+        await sleep(CONFIG.TIMEOUT);
+        await fetchMatchTimeline(matchId, apikey);
     }
 }
 
-const store = {};
-
+/**
+ * Continuously find matches to aggregate onto database
+ */
 async function run() {
+
     const puuids = await fetch();
-    let apikeys = [
-        process.env.RIOT_API_KEY,
-        process.env.RIOT_API_KEY_2
-    ];
 
     for (let puuid of puuids) {
         let matchIds = await fetchMatches(puuid);
-        if (!matchIds) continue;
+        // matchIds = matchIds.slice(0, 2);
+        if (!matchIds) {
+            console.log(`matchIds is empty? ${matchIds}`);
+            continue;
+        };
         matchIds = matchIds.filter(async(x) => {
             return await MatchModel.findById(x) !== undefined;
         });
         if (matchIds !== undefined) {
             for (let matchId of matchIds) {
                 if (await MatchModel.findById(matchId)) continue;
+                let timeSinceLastRequest = Date.now();
                 await sleep(1200);
                 let oldtime;
-                const totaltime = Date.now();
 
                 const doSomething = (mdata, tdata) => {
-                    console.log(`[Received] ${matchId}`);
+                    // console.log(`[Received] ${matchId}`);
                     const matchData = mdata.value;
                     const matchTimeline = tdata.value;
                     if (matchData !== undefined && matchTimeline !== undefined) {
-                        oldtime = Date.now();
                         const data = packData(matchData, matchTimeline);
                         // console.log(`Pack data: ${Date.now() - oldtime}ms`);
-                        oldtime = Date.now();
                         try {
                             MatchModel.create({
                                 _id: matchId
                             })
-                            .then(() => aggregate(data, store));
+                            .then(async () => {
+                                oldtime = Date.now();
+                                await aggregate(data);
+                                // aggregate(data);
+                                console.log(`[Completed] ${matchId} (${(Date.now() - oldtime) / 1000}s)`);
+                            });
                         } catch (ex) {
                             console.log(`[ERR] Duplicate key`);
                         }
                     
                         // console.log(`Aggregate: ${(Date.now() - oldtime)}ms`);
                     }
-                    console.log(`[Completed] ${matchId}`);
+                    // console.log(`[Completed] ${matchId}`);
                 }
 
                 try {
                     oldtime = Date.now();
-                    const matchData = fetchMatchData(matchId, apikeys[0]);
-                    const matchTimeline = fetchMatchTimeline(matchId, apikeys[1]);
+                    const matchData = fetchMatchData(matchId, APIKEY1);
+                    const matchTimeline = fetchMatchTimeline(matchId, APIKEY2);
 
                     Promise.allSettled([matchData, matchTimeline])
-                    .then((results) => doSomething(results[0], results[1]));
-                    console.log(`[Sent] ${matchId}`);
+                    .then((results) => {
+                        console.log(`[Fetched] ${matchId} (${(Date.now() - oldtime) / 1000}s)`);
+                        doSomething(results[0], results[1])
+                    });
+                    console.log(`[Sent] ${matchId} (${(Date.now() - timeSinceLastRequest) / 1000}s)`);
+                    timeSinceLastRequest = new Date();
                 } catch (ex){
                     console.log(ex);
                 }
             }
         }
-    }    
-    // console.log(store);
+    }
+    run();    
 }
 
 run();

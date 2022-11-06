@@ -1,16 +1,8 @@
-const express = require('express');
-
-const app = express();
+require('dotenv').config();
 const mongoose = require('mongoose');
+const app = require('./app');
+const port = process.env.PORT || 5000;
 
-const buildRoutes = require('./routes/buildRoute');
-
-app.use(express.json());
-
-// Routes
-// app.use('/api/champion/build', buildRoutes);
-
-require('./controllers/fetchController.js');
 
 mongoose.connect(process.env.MONGO_DB_URI, {
     useNewUrlParser: true,
@@ -23,6 +15,6 @@ mongoose.connect(process.env.MONGO_DB_URI, {
     console.log(err.message);
 });
 
-app.listen(3000, () => {
+app.listen(port, () => {
     console.log('App is running...');
 });
