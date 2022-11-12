@@ -111,7 +111,7 @@ async function run() {
 
     for (let puuid of puuids) {
         let matchIds = await fetchMatches(puuid);
-        // matchIds = matchIds.slice(0, 2);
+        matchIds = matchIds.slice(0, 2);
         if (!matchIds) {
             console.log(`matchIds is empty? ${matchIds}`);
             continue;
@@ -126,15 +126,14 @@ async function run() {
                 await sleep(1200);
                 let oldtime;
 
-                const doSomething = async(mdata, tdata) => {
-                    // console.log(`[Received] ${matchId}`);
+                const doSomething = (mdata, tdata) => {
                     const matchData = mdata.value;
                     const matchTimeline = tdata.value;
                     if (matchData !== undefined && matchTimeline !== undefined) {
                         const data = packData(matchData, matchTimeline);
                         // console.log(`Pack data: ${Date.now() - oldtime}ms`);
                         try {
-                            await MatchModel.create({
+                            MatchModel.create({
                                 _id: matchId
                             })
                             .then(async () => {
@@ -156,13 +155,13 @@ async function run() {
                     oldtime = Date.now();
                     const matchData = fetchMatchData(matchId, APIKEY1);
                     const matchTimeline = fetchMatchTimeline(matchId, APIKEY2);
-                    console.log(`[Sent] ${matchId} (${(Date.now() - timeSinceLastRequest) / 1000}s)`);
 
-                    await Promise.allSettled([matchData, matchTimeline])
-                    .then(async (results) => {
+                    Promise.allSettled([matchData, matchTimeline])
+                    .then((results) => {
                         console.log(`[Fetched] ${matchId} (${(Date.now() - oldtime) / 1000}s)`);
-                        await doSomething(results[0], results[1])
+                        doSomething(results[0], results[1])
                     });
+                    console.log(`[Sent] ${matchId} (${(Date.now() - timeSinceLastRequest) / 1000}s)`);
                     timeSinceLastRequest = new Date();
                 } catch (ex){
                     console.log(ex);

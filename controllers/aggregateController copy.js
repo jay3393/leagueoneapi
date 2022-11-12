@@ -3,7 +3,7 @@ const { arrEquals } = require('../util/arrayEquals');
 const { timeElapsed } = require('../util/timeElapsed');
 
 // Debugging
-const DEBUG = true;
+const DEBUG = false;
 let debugMatchHigh=0;
 let debugMatchTotal=0;
 let debugMatchCount=0;
@@ -80,7 +80,7 @@ module.exports.aggregate = async function (dataPack) {
         } = d;
 
         const addWin = win ? 1 : 0;
-        const runeStats = `${offense}${flex}${defense}`;
+        const runeStats = `${defense}${flex}${offense}`;
         const summonerSpell = [summoner1Id, summoner2Id].sort((a,b) => a - b);
         const skillArray = skillPath.split('');
 
@@ -89,8 +89,8 @@ module.exports.aggregate = async function (dataPack) {
         // Aggregation
         try {
             oldtime = new Date();
-            const idExists = await BuildModel.findOne({ _id: championId, "roles.role": lane }, { "roles.$": 1, matches: 1, wins: 1, championName: 1 });
-            // const idExists = findIds.find(x => x._id === championId);
+            // const idExists = await BuildModel.findById(championId);
+            const idExists = findIds.find(x => x._id === championId);
             diff = new Date() - oldtime;
             totalDiff+=diff;
             debugFindIdHigh = Math.max(debugFindIdHigh, diff);

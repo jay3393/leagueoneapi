@@ -34,33 +34,48 @@ module.exports.getBuild = async(req, res) => {
         if (championExists) {
             if (lane) {
                 const laneExists = championExists.roles.find(x => x.role === lane);
+                const matches = laneExists.matches;
+                const wins = laneExists.wins;
+
                 if (laneExists) {
                     const skillPath = new Array(laneExists.skillPath.length);
                     for (let s = 0; s < laneExists.skillPath.length; s++) {
                         skillPath[s] = laneExists.skillPath.find(x => x.position === s + 1).skills.sort((a, b) => b.matches - a.matches)[0].skill;
                     }
-                    const stats = laneExists.runes.stats.sort((a, b) => b.matches - a.matches)[0].picks;
+
+                    const stats = laneExists.runes.stats.sort((a, b) => b.matches - a.matches)[0];
+
                     let primaryRune = laneExists.runes.primary.sort((a, b) => b.matches - a.matches)[0];
-                    const primarySelections = primaryRune.selections.sort((a, b) => b.matches - a.matches)[0].picks;
-                    primaryRune = primaryRune.primaryStyle;
+                    const primarySelections = primaryRune.selections.sort((a, b) => b.matches - a.matches)[0];
+                    primaryRune.selections = undefined;
+
                     let secondaryRune = laneExists.runes.secondary.sort((a, b) => b.matches - a.matches)[0];
-                    const secondarySelections = secondaryRune.selections.sort((a, b) => b.matches - a.matches)[0].picks;
-                    secondaryRune = secondaryRune.secondaryStyle;
-                    const summonerSpells = laneExists.summonerSpells.sort((a, b) => b.matches - a.matches)[0].spells;
+                    const secondarySelections = secondaryRune.selections.sort((a, b) => b.matches - a.matches)[0];
+                    secondaryRune.selections = undefined;
+
+                    const summonerSpells = laneExists.summonerSpells.sort((a, b) => b.matches - a.matches)[0];
+                    delete summonerSpells._id;
+                    
                     const startingItems = laneExists.starterItems.sort((a, b) => b.matches - a.matches)[0];
+                    delete startingItems._id;
 
                     const items = ['mythic', 'boots', 'second', 'third', 'fourth', 'fifth', 'sixth'];
                     const insertItems = [];
                     const obj = {};
 
                     for (let item of items) {
-                        console.log(laneExists[item].filter(x => !insertItems.includes(x.itemId)));
+                        // console.log(laneExists[item].filter(x => !insertItems.includes(x.itemId)));
                         const bestItem = laneExists[item].filter(x => !insertItems.includes(x.itemId)).sort((a, b) => {
                             if (a.itemId === null) return 1;
                             else if (b.itemId === null) return -1;
                             else return b.matches - a.matches;
-                        })[0]?.itemId;
-                        obj[item] = bestItem;
+                        })[0];
+                        obj[item] = {
+                            _id: bestItem?._id,
+                            itemId: bestItem?.itemId,
+                            matches: bestItem?.matches,
+                            wins: bestItem?.wins,
+                        };
                         insertItems.push(bestItem);
                     }
 
@@ -72,6 +87,10 @@ module.exports.getBuild = async(req, res) => {
                     obj.summonerSpells = summonerSpells;
                     obj.skillPath = skillPath;
                     obj.startingItems = startingItems;
+
+                    res.set({
+                        'Access-Control-Allow-Origin': '*'
+                    });
 
                     res.status(200).json({ ok: true, data: obj });
                     return;
